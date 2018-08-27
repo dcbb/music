@@ -46,9 +46,10 @@ class Voice:
     def __init__(self,
                  outport,
                  inport,
-                 note_callback,
+                 note_callback=None,
                  note_length_callback=None,
                  velocity_callback=None,
+                 event_callback=None
                  ):
         self.outport = outport
         self.inport = inport
@@ -58,29 +59,41 @@ class Voice:
         # when do we need to turn sth off?
         self.next_off_tick = None
 
-        # defaults
-        if note_length_callback is None:
-            note_length_callback = repeat(8)
-        if velocity_callback is None:
-            velocity_callback = repeat(64)
+        if event_callback is not None:
+            print('event callback mode')
 
-        if isinstance(note_callback, collections.Iterable):
-            print('note callback is an Iterable')
-            self.note_callback = lambda t, q: next(note_callback)
-        else:
-            self.note_callback = note_callback
+            if isinstance(event_callback, collections.Iterable):
+                print('event callback is an Iterable')
+                self.event_callback = lambda t, q: next(event_callback)
+            else:
+                self.event_callback = event_callback
 
-        if isinstance(note_length_callback, collections.Iterable):
-            print('note length callback is an Iterable')
-            self.note_length_callback = lambda t, q: next(note_length_callback)
         else:
-            self.note_length_callback = note_callback
+            print('separate callbacks')
+            self.event_callback = None
 
-        if isinstance(velocity_callback, collections.Iterable):
-            print('velocity callback callback is an Iterable')
-            self.velocity_callback = lambda t, q: next(velocity_callback)
-        else:
-            self.velocity_callback = velocity_callback
+            if note_length_callback is None:
+                note_length_callback = repeat(8)
+            if velocity_callback is None:
+                velocity_callback = repeat(64)
+
+            if isinstance(note_callback, collections.Iterable):
+                print('note callback is an Iterable')
+                self.note_callback = lambda t, q: next(note_callback)
+            else:
+                self.note_callback = note_callback
+
+            if isinstance(note_length_callback, collections.Iterable):
+                print('note length callback is an Iterable')
+                self.note_length_callback = lambda t, q: next(note_length_callback)
+            else:
+                self.note_length_callback = note_callback
+
+            if isinstance(velocity_callback, collections.Iterable):
+                print('velocity callback callback is an Iterable')
+                self.velocity_callback = lambda t, q: next(velocity_callback)
+            else:
+                self.velocity_callback = velocity_callback
 
     def tick(self, tick, cc_queue):
         if tick == self.next_off_tick:
@@ -88,9 +101,13 @@ class Voice:
             # print(f'{tick}: off {self.last_note_on}')
 
         if tick == self.next_on_tick:
-            note = self.note_callback(tick, cc_queue)
-            note_len = len2tick[self.note_length_callback(tick, cc_queue)]
-            velocity = self.velocity_callback(tick, cc_queue)
+            if self.event_callback is None:
+                note = self.note_callback(tick, cc_queue)
+                note_len = len2tick[self.note_length_callback(tick, cc_queue)]
+                velocity = self.velocity_callback(tick, cc_queue)
+            else:
+                note, note_len, velocity = self.event_callback(tick, cc_queue)
+
             if note:
                 print((note - 1) * ' ' + '#', flush=True)
             else:
@@ -161,9 +178,10 @@ digitone_in = 'Elektron Digitone Digitone in 1'
 digitone_out = 'Elektron Digitone Digitone out 1'
 
 
-def play_with_voice(note_callback,
+def play_with_voice(note_callback=None,
                     note_length_callback=None,
                     velocity_callback=None,
+                    event_callback=None,
                     inport_name=None,
                     outport_name=None,
                     internal_clock=None
@@ -180,7 +198,8 @@ def play_with_voice(note_callback,
                 inport,
                 note_callback=note_callback,
                 note_length_callback=note_length_callback,
-                velocity_callback=velocity_callback
+                velocity_callback=velocity_callback,
+                event_callback=event_callback
             )
             clock_func(inport, voice.tick)
 
