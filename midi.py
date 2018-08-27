@@ -91,7 +91,10 @@ class Voice:
             note = self.note_callback(tick, cc_queue)
             note_len = len2tick[self.note_length_callback(tick, cc_queue)]
             velocity = self.velocity_callback(tick, cc_queue)
-            print((note - 1) * ' ' + '#', flush=True)
+            if note:
+                print((note - 1) * ' ' + '#', flush=True)
+            else:
+                print()
             self.next_off_tick = tick + note_len // 2  # this is essentially gate length, could be a param
             self.next_on_tick = tick + note_len
             if note is not None and velocity is not None:
