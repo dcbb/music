@@ -104,8 +104,26 @@ def filled_chord_permutations():
                 yield None
 
 
+def one_falling():
+    c_major = Scale(C,major)
+    drops = reversed([n for n in c_major] + [n+12 for n in c_major])
+    while True:
+        for note in [C,C,C,C,C,C,None,C]:
+            if note is None:
+                yield next(drops)
+            else:
+                yield note
 
 if __name__ == '__main__':
+    print('xxx')
+    if True:
+        play_with_voice(
+                note_callback=one_falling(),
+                note_length_callback=repeat(16),
+                velocity_callback=cycle([64,40, 40,40, 40,40, 40,40]),
+                outport_name=None, # 'USB MIDI Interface'
+                internal_clock=140)
+
 
     if False:
         play_with_voice(
@@ -114,7 +132,7 @@ if __name__ == '__main__':
                 internal_clock=140)
 
 
-    if True:
+    if False:
         play_with_voice(
                 note_callback=filled_chord_permuçtations(),
                 note_length_callback=repeat(8),
