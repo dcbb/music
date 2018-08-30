@@ -58,6 +58,12 @@ class Scale:
     def __getitem__(self, index):
         return self.root + self.intervals[index%self.size] + 12 * (index//self.size)
 
+    def iterate(self, start, end):
+        def generator():
+            for i in range(start, end+1):
+                yield self[i]
+        return generator()
+
     @property
     def size(self):
         return len(self.intervals)

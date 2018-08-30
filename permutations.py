@@ -46,15 +46,17 @@ def falling_permutations_2():
             current_chord = iter([chord[i] for i in perm])
 
 
+# KEEP THIS!
 def monotonic_permutations():
-    print('weird', flush=True)
-    k = 5
-    chord = Scale(C - 24, major).chord(2 - 1, k)
-    gen = chain.from_iterable(permutations(chord, k))
-    return gen
+    chord = Scale(C - 12, major).chord(1, 6)
+    chord = Scale(C - 12, dorian).chord(0, 6)
+    gen = chain.from_iterable(permutations(chord, 3))
+    for note in gen:
+        if True or random()>0.3:
+            yield note
 
 
-two16_permutations = cycle(chain.from_iterable(permutations([8, 8, 8, 8, 16, 16]))) #[8, 8, 8, 16, 16, 16, 32, 32]
+two16_permutations = cycle(chain.from_iterable(permutations([8, 8, 8, 16, 16]))) #[8, 8, 8, 16, 16, 16, 32, 32]
 
 simple_rhythm = cycle([8, 8, 8, 16, 16])
 
@@ -106,24 +108,17 @@ def filled_chord_permutations():
 
 def one_falling():
     c_major = Scale(C,major)
-    drops = reversed([n for n in c_major] + [n+12 for n in c_major])
+    drops = cycle(c_major.iterate(-6,6))
     while True:
-        for note in [C,C,C,C,C,C,None,C]:
+        for note in [C,C,C,None]:
             if note is None:
-                yield next(drops)
+                res = next(drops)
             else:
-                yield note
+                res = note
+            yield res
 
 if __name__ == '__main__':
     print('xxx')
-    if True:
-        play_with_voice(
-                note_callback=one_falling(),
-                note_length_callback=repeat(16),
-                velocity_callback=cycle([64,40, 40,40, 40,40, 40,40]),
-                outport_name=None, # 'USB MIDI Interface'
-                internal_clock=140)
-
 
     if False:
         play_with_voice(
@@ -141,7 +136,8 @@ if __name__ == '__main__':
                 internal_clock=140)
 
     else:
-        play_with_voice(cycle(falling_permutations_2()),
-                        two16_permutations,
+        play_with_voice(note_callback=cycle(monotonic_permutations()),
+                        note_length_callback=repeat(16),
+                        velocity_callback=cycle([64,40,40,40]),
                         outport_name=None, # 'USB MIDI Interface'
-                        internal_clock=140)
+                        internal_clock=120)
