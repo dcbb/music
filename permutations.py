@@ -1,4 +1,5 @@
 from midi import play_with_voice
+import midi
 from music import *
 from itertools import *
 from helpers import *
@@ -48,7 +49,7 @@ def falling_permutations_2():
 
 # KEEP THIS!
 def monotonic_permutations():
-    chord = Scale(C - 12, major).chord(1, 6)
+    # chord = Scale(C - 12, major).chord(1, 6)
     chord = Scale(C - 12, dorian).chord(0, 6)
     gen = chain.from_iterable(permutations(chord, 3))
     for note in gen:
@@ -139,5 +140,6 @@ if __name__ == '__main__':
         play_with_voice(note_callback=cycle(monotonic_permutations()),
                         note_length_callback=repeat(16),
                         velocity_callback=cycle([64,40,40,40]),
-                        outport_name=None, # 'USB MIDI Interface'
-                        internal_clock=120)
+                        inport_name=midi.digitone_in,
+                        outport_name=midi.digitone_out, # 'USB MIDI Interface'
+                        internal_clock=None) # was 80

@@ -12,10 +12,18 @@ import time
 def clock_mon(inport, callback):
     clocks = 0
     cc_queue = collections.deque()
+    running = False
+    print('Waiting for start...')
     for msg in inport:
-        if msg.type == 'control_change':
+        if msg.type == 'start':
+            running = True
+            print('Start!')
+        elif msg.type == 'stop':
+            running = False
+            print('Stop!')
+        elif msg.type == 'control_change' and running:
             cc_queue.append(msg)
-        if msg.type == 'clock':
+        elif msg.type == 'clock' and running:
             callback(clocks, cc_queue)
             clocks += 1
 
