@@ -51,10 +51,21 @@ def falling_permutations_2():
 def monotonic_permutations():
     # chord = Scale(C - 12, major).chord(1, 6)
     chord = Scale(C - 12, dorian).chord(0, 6)
-    gen = chain.from_iterable(permutations(chord, 3))
+    gen = chain.from_iterable(permutations(chord, 3)) # was 3
     for note in gen:
         if True or random()>0.3:
             yield note
+
+
+def monotonic_permutations_2():
+    notes = monotonic_permutations()
+
+    def handler(t,ccq):
+        print(ccq)
+        return next(notes)
+
+    return handler
+
 
 
 two16_permutations = cycle(chain.from_iterable(permutations([8, 8, 8, 16, 16]))) #[8, 8, 8, 16, 16, 16, 32, 32]
@@ -123,21 +134,29 @@ if __name__ == '__main__':
 
     if False:
         play_with_voice(
-                event_callback=filled_chord_permutations_2(),
+                event_callback=filled_chord_permutations_bach_like(),
                 outport_name=None, # 'USB MIDI Interface'
                 internal_clock=140)
 
 
     if False:
         play_with_voice(
-                note_callback=filled_chord_permuçtations(),
+                note_callback=filled_chord_permutations(),
                 note_length_callback=repeat(8),
                 velocity_callback=cycle([64,40]),
-                outport_name=None, # 'USB MIDI Interface'
+                outport_name=midi.digitone_out, # 'USB MIDI Interface'
                 internal_clock=140)
 
-    else:
+    elif False:
         play_with_voice(note_callback=cycle(monotonic_permutations()),
+                        note_length_callback=repeat(16),
+                        velocity_callback=cycle([64,40,40,40]),
+                        inport_name=midi.digitone_in,
+                        outport_name=midi.digitone_out, # 'USB MIDI Interface'
+                        internal_clock=None) # was 80
+
+    else:
+        play_with_voice(note_callback=monotonic_permutations_2(),
                         note_length_callback=repeat(16),
                         velocity_callback=cycle([64,40,40,40]),
                         inport_name=midi.digitone_in,
