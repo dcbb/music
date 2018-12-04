@@ -15,6 +15,9 @@ def clock_mon(inport, callback):
     running = False
     print('Waiting for start...')
     for msg in inport:
+        if msg.type != 'clock':
+            print('?', msg.type, msg)
+
         if msg.type == 'start':
             running = True
             print('Start!')
@@ -22,10 +25,12 @@ def clock_mon(inport, callback):
             running = False
             print('Stop!')
         elif msg.type == 'control_change' and running:
+            print(cc,msg)
             cc_queue.append(msg)
         elif msg.type == 'clock' and running:
             callback(clocks, cc_queue)
             clocks += 1
+        
 
 
 def create_clock(bpm):
