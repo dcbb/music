@@ -5,6 +5,18 @@ from itertools import *
 from helpers import *
 from math import copysign
 from random import random
+from getch import getch
+from freezable import *
+
+#from pynput.keyboard import Key, Listener
+#import curses, time
+
+
+
+
+
+
+last_control = None
 
 
 def fprint(message):
@@ -61,7 +73,6 @@ def monotonic_permutations_2():
     notes = monotonic_permutations()
 
     def handler(t,ccq):
-        print(ccq)
         return next(notes)
 
     return handler
@@ -129,8 +140,143 @@ def one_falling():
                 res = note
             yield res
 
+
+def rand_branch(gen1, gen2, p):
+    while True:
+        v1 = next(gen1)
+        v2 = next(gen2)
+        yield v1 if random() < p else v2
+
+
+def rand_gate(p, gen):
+    return rand_branch(gen, repeat(None), p)
+
+
+def cycle_scale(scale, indices):
+    c = cycle(indices)
+    while True:
+         yield scale[next(c)]
+
+
+def coin_flip(p=0.5):
+    return random() < p
+
+
+def gate_diff(gen):
+    last = next(gen)
+    yield last
+
+    while True:
+        v = next(gen)
+        yield v if v!=last else None
+        last = v
+
+def gate_diff_n(gen, n):
+    q = deque(maxlen=n+1)
+
+    while True:
+        v = next(gen)
+        q.append(v)
+        if all(vq==v for vq in q):
+            yield None
+        else:
+            yield v
+
+
+"""
+ C     D     E  F     G     A     B  C     D     E  F     G     A     B  C     D     E  F     G     A     B 
+01 02 03 04 05 06 07 08 09 10 11 12 01 02 03 04 05 06 07 08 09 10 11 12 01 02 03 04 05 06 07 08 09 10 11 12
+ A                    A                    A                    A                    A                    A
+
+"""
+
+def my_gate(p):
+    #all_chord_tones = [3,5,7,4,6,9]
+    # all_chord_tones = [1,2,3,4,5,6,7,8,7,6,5,4,3,2,1,1]
+    all_chord_tones = [1,3,5,7,9,11,13,2,4,6,8,10,12,14]
+    chord_tone_choices = cycle([all_chord_tones[:n] for n in range(1, len(all_chord_tones)+1)])
+
+    chord_tone_cycle = cycle(i-1 for i in next(chord_tone_choices))
+
+    scales = cycle([Scale(root-12, major) for root in circle_of_fifths])
+    ticks = 0
+    bars = 0
+    rnd = FreezableRandom(32)
+
+    while True:
+
+        if ticks % 16 == 0:
+            scale = next(scales)
+            midi.log(f'switching scale to {scale}')
+
+        if midi.has_cc('d'):
+            new_chord_tones = next(chord_tone_choices)
+            chord_tone_cycle = cycle(i-1 for i in new_chord_tones)
+            midi.log(f'chord tones are {new_chord_tones}')
+        if midi.has_cc('2'):
+            p += 0.1
+        if midi.has_cc('1'):
+            p -= 0.1
+        if midi.has_cc('f'):
+            rnd.freeze(32)
+        if midi.has_cc('g'):
+            rnd.freeze(0)
+
+        midi.show_status(0, f'prob is {p}')
+        midi.show_status(1, 'frozen' if rnd.is_frozen() else 'not frozen')
+
+        maybe_note = next(chord_tone_cycle)
+        j = (maybe_note if rnd.coin(p) else None)
+        yield scale[j] if j else scale[0] - 12
+
+        ticks += 1
+        bars = ticks // 16
+
+
+
+def fourths():
+
+    s = [n - 24 for n in islice(Scale(A, minor), 3*7)]
+    while True:
+        for r in cycle(s):
+            for i in range(4):
+                yield r + 5*i
+
+
+def simple():
+    # 
+    #
+    #gen = gate_diff_n( my_gate(0.3), 2)
+    gen = my_gate(0.3)
+
+    #gen = fourths()
+
+    return gen
+
+
+def main(stdscr):
+    play_with_voice(
+        stdscr,
+        note_callback=simple(),
+        note_length_callback=cycle([16]),
+        velocity_callback=cycle([127,1,1,1]),  #64,48,48,48
+        outport_name='USB MIDI Interface', # midi.digitone_out, # 'USB MIDI Interface'
+        internal_clock=120)
+
+
+
 if __name__ == '__main__':
-    print('xxx')
+    import curses
+    curses.wrapper(main)
+
+    from threading import Thread
+    print('starting')
+    #t = Thread(target=watch_input)
+    #t.start()
+
+
+
+
 
     if False:
         play_with_voice(
@@ -144,21 +290,22 @@ if __name__ == '__main__':
                 note_callback=filled_chord_permutations(),
                 note_length_callback=repeat(8),
                 velocity_callback=cycle([64,40]),
-                outport_name=midi.digitone_out, # 'USB MIDI Interface'
+                outport_name=None, # 'USB MIDI Interface'
                 internal_clock=140)
 
     elif False:
         play_with_voice(note_callback=cycle(monotonic_permutations()),
                         note_length_callback=repeat(16),
                         velocity_callback=cycle([64,40,40,40]),
-                        inport_name=midi.digitone_in,
-                        outport_name=midi.digitone_out, # 'USB MIDI Interface'
+                        inport_name=None,
+                        outport_name=None, # 'USB MIDI Interface'
                         internal_clock=None) # was 80
 
     else:
+        print('xxx')
         play_with_voice(note_callback=monotonic_permutations_2(),
                         note_length_callback=repeat(16),
                         velocity_callback=cycle([64,40,40,40]),
-                        inport_name=midi.digitone_in,
-                        outport_name=midi.digitone_out, # 'USB MIDI Interface'
+                        inport_name=None,
+                        outport_name=None, # 'USB MIDI Interface'
                         internal_clock=None) # was 80

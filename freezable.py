@@ -8,12 +8,15 @@ class FreezableRandom:
         self.queue = deque(maxlen=16)
         self.freeze_len = 0
         self.pos = 0
-        if freeze_len:
+        if freeze_len>0:
             self.freeze(freeze_len)
 
     def freeze(self, length):
         self.freeze_len = length
         self.pos = 0
+
+    def is_frozen(self):
+        return self.freeze_len>0
 
     def float(self):
         if self.freeze_len==0:

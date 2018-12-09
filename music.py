@@ -28,9 +28,21 @@ def reverse(iterable):
 
 note_names = 'C,C#,D,D#,E,F,F#,G,G#,A,A#,B'.split(',')
 name_to_note = {name: num for num, name in enumerate(note_names)}
+name_to_note['E#'] = name_to_note['F']
+name_to_note['B#'] = name_to_note['C']
+
+def name_simple(note: int) -> str:
+    """
+    Returns the name of a note as a string, excluding MIDI number.
+    """
+    return note_names[(note-60)%12]
 
 
 def name(note_or_notes):
+    """
+    Returns the name of a note as a string, including the MIDI note value. Works on single notes
+    and lists.
+    """
     def name_(note_):
         return f'{note_names[(note_-60)%12]}:{note_}'
     if isinstance(note_or_notes, list):
@@ -84,6 +96,7 @@ class Scale:
 
 
 major      = [ n - 60 for n in [60, 62, 64, 65, 67, 69, 71] ]
+ionian     = major
 dorian     = mode(major, 1)
 phrygian   = mode(major, 2)
 lydian     = mode(major, 3)
@@ -92,6 +105,7 @@ aolian     = mode(major, 5)
 locrian    = mode(major, 6)
 minor      = aolian
 
+all_modes = [ionian, dorian, phrygian, lydian, mixolydian, aolian, locrian]
 
 
 C  = note('C')
@@ -99,6 +113,7 @@ Cs = note('C#')
 D  = note('D')
 Ds = note('D#')
 E  = note('E')
+Es  = note('E#')
 F  = note('F')
 Fs = note('F#')
 G  = note('G')
@@ -106,6 +121,9 @@ Gs = note('G#')
 A  = note('A')
 As = note('A#')
 B  = note('B')
+Bs  = note('B#')
+
+circle_of_fifths = [C, G, D, A, E, B, Fs, Cs, Gs, Ds, As, Es, Bs]
 
 
 if __name__ == '__main__':
@@ -127,4 +145,8 @@ if __name__ == '__main__':
     print(name(Scale(E, phrygian)[7]))
 
     print(name(c_major.chord(0,5)))
+
+    print('')
+    print(Scale(D, dorian))
+    print(Scale(F, lydian))
 

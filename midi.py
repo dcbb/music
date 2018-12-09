@@ -7,25 +7,52 @@ import collections
 import math
 import random
 import time
+import curses
+
+log_counter = 0
+log_messages = collections.deque(maxlen=10)
+status_messages = ['' for _ in range(10)]
+cc_queue = collections.deque()
+
+
+def has_cc(cc):
+    if cc in cc_queue:
+        cc_queue.remove(cc)
+        return True
+    else:
+        return False
+
+
+def log(message):
+    """Display a messgage in the log on the screen."""
+    global log_counter
+    log_messages.append(f'{log_counter: 4d} {message}')
+    log_counter += 1
+
+
+def show_status(slot, status):
+    """Display a permaent status on the screen in the given status slot."""
+    if slot >= len(status_messages):
+        log(f'Slot {slot} exceeds status message limit.')
+    else:
+        status_messages[slot] = status
 
 
 def clock_mon(inport, callback):
     clocks = 0
-    cc_queue = collections.deque()
-    running = False
-    print('Waiting for start...')
+    running = True
+    log('Waiting for start...')
     for msg in inport:
-        if msg.type != 'clock':
-            print('?', msg.type, msg)
-
+        #if msg.type != 'clock':
+        #    log('?', msg.type, msg)
         if msg.type == 'start':
             running = True
-            print('Start!')
+            log('Start!')
         elif msg.type == 'stop':
             running = False
-            print('Stop!')
+            log('Stop!')
         elif msg.type == 'control_change' and running:
-            print(cc,msg)
+            log(cc,msg)
             cc_queue.append(msg)
         elif msg.type == 'clock' and running:
             callback(clocks, cc_queue)
@@ -36,7 +63,6 @@ def clock_mon(inport, callback):
 def create_clock(bpm):
     def clock(inport, callback):
         delta_t = 60 / bpm / 24
-        cc_queue = collections.deque()
         for clocks in count():
             callback(clocks, cc_queue)
             time.sleep(delta_t)
@@ -62,7 +88,8 @@ class Voice:
                  note_callback=None,
                  note_length_callback=None,
                  velocity_callback=None,
-                 event_callback=None
+                 event_callback=None,
+                 stdscr=None
                  ):
         self.outport = outport
         self.inport = inport
@@ -72,17 +99,21 @@ class Voice:
         # when do we need to turn sth off?
         self.next_off_tick = None
 
+        self.stdscr = stdscr
+        stdscr.nodelay(True)
+        self.piano_roll_row = 0
+
         if event_callback is not None:
-            print('event callback mode')
+            log('event callback mode')
 
             if isinstance(event_callback, collections.Iterable):
-                print('event callback is an Iterable')
+                log('event callback is an Iterable')
                 self.event_callback = lambda t, q: next(event_callback)
             else:
                 self.event_callback = event_callback
 
         else:
-            print('separate callbacks')
+            log('separate callbacks')
             self.event_callback = None
 
             if note_length_callback is None:
@@ -91,29 +122,40 @@ class Voice:
                 velocity_callback = repeat(64)
 
             if isinstance(note_callback, collections.Iterable):
-                print('note callback is an Iterable')
+                log('note callback is an Iterable')
                 self.note_callback = lambda t, q: next(note_callback)
             else:
                 self.note_callback = note_callback
 
             if isinstance(note_length_callback, collections.Iterable):
-                print('note length callback is an Iterable')
+                log('note length callback is an Iterable')
                 self.note_length_callback = lambda t, q: next(note_length_callback)
             else:
                 self.note_length_callback = note_callback
 
             if isinstance(velocity_callback, collections.Iterable):
-                print('velocity callback callback is an Iterable')
+                log('velocity callback callback is an Iterable')
                 self.velocity_callback = lambda t, q: next(velocity_callback)
             else:
                 self.velocity_callback = velocity_callback
 
     def tick(self, tick, cc_queue):
-        if tick == self.next_off_tick:
+        scr = self.stdscr
+
+        if tick == self.next_off_tick and self.last_note_on:
             self.outport.send(mido.Message('note_off', note=self.last_note_on))
-            # print(f'{tick}: off {self.last_note_on}')
+
+        try:
+            key = scr.getkey()
+            if key=='q':
+                exit()
+            cc_queue.append(key)
+            scr.addstr(2,1, f'Commands: {" ".join(cc_queue)}')
+        except curses.error:
+            pass
 
         if tick == self.next_on_tick:
+
             if self.event_callback is None:
                 note = self.note_callback(tick, cc_queue)
                 note_len = len2tick[self.note_length_callback(tick, cc_queue)]
@@ -121,15 +163,41 @@ class Voice:
             else:
                 note, note_len, velocity = self.event_callback(tick, cc_queue)
 
-            if note:
-                print((note - 1) * ' ' + '#', flush=True)
-            else:
-                print()
             self.next_off_tick = tick + note_len // 2  # this is essentially gate length, could be a param
             self.next_on_tick = tick + note_len
             if note is not None and velocity is not None:
                 self.last_note_on = note
                 self.outport.send(mido.Message('note_on', note=note, velocity=velocity))
+
+            ########################################
+            # HANDLING THE UI
+            #
+            # write log to screen
+            w = min(curses.COLS-2, max(len(m) for m in log_messages))
+            for i, message in enumerate(log_messages):
+                scr.addstr(4+i,1, message + (w - len(message)) * ' ')
+
+            # clear screen if we reached the bottom with the piano roll
+            if self.piano_roll_row==0:
+                scr.clear()
+            if note:
+                # write "piano roll" to screen if we have a note
+                note_name = name_simple(note)
+                col = min(note+20, curses.COLS-1)
+                if note_name.endswith('#'):
+                    scr.addstr(self.piano_roll_row, col, note_name[0])
+                else:
+                    scr.addstr(self.piano_roll_row, col, note_name[0], curses.A_STANDOUT)
+            scr.refresh()
+            self.piano_roll_row = (self.piano_roll_row+1) % curses.LINES
+
+            # write status infos to screen
+            w = min(curses.COLS-2, max(len(m) for m in status_messages))
+            for i, message in enumerate(status_messages):
+                if len(message) > 0:
+                    scr.addstr(curses.LINES - 1 - len(status_messages) +i, 1, message + (w - len(message)) * ' ')
+            #
+            ########################################
 
 
 class Cycles:
@@ -149,7 +217,7 @@ class Cycles:
         quarters = tick / (24 * self.scale)
         s = math.sin(quarters * math.pi) * 0.5 + 0.5  # 0 to 1
         i = round(s * (len(self.cycle_scale) - 1))
-        print(f'{self.scale:0.2f}', 'O' * i)
+        log(f'{self.scale:0.2f}', 'O' * i)
         new_note = self.cycle_scale[i]
         if new_note == self.last_note:
             play_note = None
@@ -183,15 +251,17 @@ def funnel2(n):
 
 def arpeggio(notes, offsets, n):
     arp = [notes[off] for off in islice(cycle(offsets(len(notes))), n)]
-    print(arp, flush=True)
+    log(arp, flush=True)
     return arp
 
 
 digitone_in = 'Elektron Digitone Digitone in 1'
 digitone_out = 'Elektron Digitone Digitone out 1'
+usb_interface_out = 'USB MIDI Interface'
 
 
-def play_with_voice(note_callback=None,
+def play_with_voice(stdscr,
+                    note_callback=None,
                     note_length_callback=None,
                     velocity_callback=None,
                     event_callback=None,
@@ -201,12 +271,12 @@ def play_with_voice(note_callback=None,
                     ):
     clock_func = create_clock(bpm=internal_clock) if isinstance(internal_clock, int) else clock_mon
     if isinstance(internal_clock, int):
-        print(f'using internal clock @ {internal_clock} bpm')
+        log(f'using internal clock @ {internal_clock} bpm')
     else:
-        print('using external clock')
-    print('trying to open inport...')
+        log('using external clock')
+    log('trying to open inport...')
     with mido.open_input(inport_name) as inport:
-        print('trying to open outport...')
+        log('trying to open outport...')
         with mido.open_output(outport_name) as outport:
             voice = Voice(
                 outport,
@@ -214,9 +284,10 @@ def play_with_voice(note_callback=None,
                 note_callback=note_callback,
                 note_length_callback=note_length_callback,
                 velocity_callback=velocity_callback,
-                event_callback=event_callback
+                event_callback=event_callback,
+                stdscr=stdscr
             )
-            print('running clock...')
+            log('running clock...')
             clock_func(inport, voice.tick)
 
 
