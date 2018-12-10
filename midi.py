@@ -1,21 +1,24 @@
 import mido
-from itertools import *
-from random import sample, choices
 from music import *
 import collections
-# import numpy as np
-import math
-import random
 import time
 import curses
+from itertools import *
 
+# how many log messages did we have so far?
 log_counter = 0
+# queue of log message history to display
 log_messages = collections.deque(maxlen=10)
+# list of status messages to display
 status_messages = ['' for _ in range(10)]
+# queue of MIDI CC messages (and other control messages)
 cc_queue = collections.deque()
 
 
 def has_cc(cc):
+    """
+    Checks the message queue for the given message. Returns True and removes the message, if found.
+    """
     if cc in cc_queue:
         cc_queue.remove(cc)
         return True
@@ -31,7 +34,7 @@ def log(message):
 
 
 def show_status(slot, status):
-    """Display a permaent status on the screen in the given status slot."""
+    """Display a permanent status on the screen in the given status slot."""
     if slot >= len(status_messages):
         log(f'Slot {slot} exceeds status message limit.')
     else:
@@ -43,7 +46,7 @@ def clock_mon(inport, callback):
     running = True
     log('Waiting for start...')
     for msg in inport:
-        #if msg.type != 'clock':
+        # if msg.type != 'clock':
         #    log('?', msg.type, msg)
         if msg.type == 'start':
             running = True
@@ -52,12 +55,11 @@ def clock_mon(inport, callback):
             running = False
             log('Stop!')
         elif msg.type == 'control_change' and running:
-            log(cc,msg)
+            log(cc, msg)
             cc_queue.append(msg)
         elif msg.type == 'clock' and running:
             callback(clocks, cc_queue)
             clocks += 1
-        
 
 
 def create_clock(bpm):
@@ -85,12 +87,30 @@ class Voice:
     def __init__(self,
                  outport,
                  inport,
+                 event_callback=None,
                  note_callback=None,
                  note_length_callback=None,
                  velocity_callback=None,
-                 event_callback=None,
                  stdscr=None
                  ):
+        """
+
+        :param outport:
+            A MIDO outport name.
+        :param inport:
+            A MIDO inport name.
+        :param event_callback:
+            A function f(tick_count, cc_message_queue) -> (note, note_length, velocity),
+            or an Iterable that yields (note, note_length, velocity).
+        :param note_callback:
+            A function f(tick_count, cc_message_queue) -> note, or an Iterable that yields a note.
+        :param note_length_callback:
+            A function f(tick_count, cc_message_queue) -> note_length, or an Iterable that yields a note_length.
+        :param velocity_callback:
+            A function f(tick_count, cc_message_queue) -> velocity, or an Iterable that yields a velocity.
+        :param stdscr:
+            A curses stdscr.
+        """
         self.outport = outport
         self.inport = inport
         self.last_note_on = None
@@ -99,15 +119,16 @@ class Voice:
         # when do we need to turn sth off?
         self.next_off_tick = None
 
+        # for terminal based UI
         self.stdscr = stdscr
         stdscr.nodelay(True)
         self.piano_roll_row = 0
 
         if event_callback is not None:
             log('event callback mode')
-
             if isinstance(event_callback, collections.Iterable):
                 log('event callback is an Iterable')
+                # if we have an Iterable, we create an ad-hoc lambda to have the right signature
                 self.event_callback = lambda t, q: next(event_callback)
             else:
                 self.event_callback = event_callback
@@ -143,14 +164,15 @@ class Voice:
         scr = self.stdscr
 
         if tick == self.next_off_tick and self.last_note_on:
+            # turn the current note off
             self.outport.send(mido.Message('note_off', note=self.last_note_on))
 
         try:
             key = scr.getkey()
-            if key=='q':
+            if key == 'q':
                 exit()
             cc_queue.append(key)
-            scr.addstr(2,1, f'Commands: {" ".join(cc_queue)}')
+            scr.addstr(2, 1, f'Commands: {" ".join(cc_queue)}')
         except curses.error:
             pass
 
@@ -173,91 +195,37 @@ class Voice:
             # HANDLING THE UI
             #
             # write log to screen
-            w = min(curses.COLS-2, max(len(m) for m in log_messages))
+            w = min(curses.COLS - 2, max(len(m) for m in log_messages))
             for i, message in enumerate(log_messages):
-                scr.addstr(4+i,1, message + (w - len(message)) * ' ')
+                scr.addstr(4 + i, 1, message + (w - len(message)) * ' ')
 
             # clear screen if we reached the bottom with the piano roll
-            if self.piano_roll_row==0:
+            if self.piano_roll_row == 0:
                 scr.clear()
             if note:
                 # write "piano roll" to screen if we have a note
                 note_name = name_simple(note)
-                col = min(note+20, curses.COLS-1)
+                col = min(note + 20, curses.COLS - 1)
                 if note_name.endswith('#'):
                     scr.addstr(self.piano_roll_row, col, note_name[0])
                 else:
                     scr.addstr(self.piano_roll_row, col, note_name[0], curses.A_STANDOUT)
             scr.refresh()
-            self.piano_roll_row = (self.piano_roll_row+1) % curses.LINES
+            self.piano_roll_row = (self.piano_roll_row + 1) % curses.LINES
 
             # write status infos to screen
-            w = min(curses.COLS-2, max(len(m) for m in status_messages))
+            w = min(curses.COLS - 2, max(len(m) for m in status_messages))
             for i, message in enumerate(status_messages):
                 if len(message) > 0:
-                    scr.addstr(curses.LINES - 1 - len(status_messages) +i, 1, message + (w - len(message)) * ' ')
+                    scr.addstr(curses.LINES - 1 - len(status_messages) + i, 1, message + (w - len(message)) * ' ')
             #
             ########################################
 
 
-class Cycles:
-
-    def __init__(self):
-        self.last_note = None
-        self.scale = 8.0
-
-    def get_note(self, tick, cc_queue):
-        if len(cc_queue) > 0:
-            cc = cc_queue.pop()
-            if cc.control == 70:
-                self.scale = (cc.value / 127) * 16 + 0.1
-            cc_queue.clear()
-
-        # 24 is one cycle per quarter
-        quarters = tick / (24 * self.scale)
-        s = math.sin(quarters * math.pi) * 0.5 + 0.5  # 0 to 1
-        i = round(s * (len(self.cycle_scale) - 1))
-        log(f'{self.scale:0.2f}', 'O' * i)
-        new_note = self.cycle_scale[i]
-        if new_note == self.last_note:
-            play_note = None
-        else:
-            play_note = new_note
-        self.last_note = new_note
-        return play_note
-
-
-def up(n):
-    return range(n)
-
-
-def down(n):
-    return reverse(range(n))
-
-
-def zigzag(n):
-    return chain(range(0, n, 2), range(1, n, 2))
-
-
-def funnel(n):
-    z = zip(range(n // 2), reverse(range(n // 2, n)))
-    return chain.from_iterable(z)
-
-
-def funnel2(n):
-    z = zip(range(n), reverse(range(n)))
-    return chain.from_iterable(z)
-
-
-def arpeggio(notes, offsets, n):
-    arp = [notes[off] for off in islice(cycle(offsets(len(notes))), n)]
-    log(arp, flush=True)
-    return arp
-
-
 digitone_in = 'Elektron Digitone Digitone in 1'
 digitone_out = 'Elektron Digitone Digitone out 1'
-usb_interface_out = 'USB MIDI Interface'
+usb_interface = 'USB MIDI Interface'
+internal_bus = 'IAC Driver IAC Bus 1'
 
 
 def play_with_voice(stdscr,
@@ -291,19 +259,38 @@ def play_with_voice(stdscr,
             clock_func(inport, voice.tick)
 
 
-def port_test():
-    print('port test')
+def list_ports():
+    print('Listing ports known to MIDO')
+    print('Output ports: ', mido.get_output_names())
+    print('Input ports: ', mido.get_input_names())
 
-    print('output ports: ', mido.get_output_names())
-    print('input ports: ', mido.get_input_names())
 
-    return
-
+def input_message_test():
     with mido.open_input('Elektron Digitone Digitone in 1') as inport:
         for msg in inport:
             print(msg)
 
 
+def voice_test(stdscr):
+    import music
+    import random
+
+    rhythm = random.sample([4, 8, 8, 16, 16, 16], k=6)
+    log(f'rhythm: {rhythm}')
+
+    scale = music.Scale(D, minor)
+    notes = cycle(
+        chain(scale.diatonic_chord(0), scale.diatonic_chord(1), scale.diatonic_chord(5), scale.diatonic_chord(4))
+    )
+
+    play_with_voice(stdscr,
+                    note_callback=notes,
+                    velocity_callback=cycle([64, 32, 32, 32, 32]),
+                    note_length_callback=cycle(rhythm),
+                    outport_name=internal_bus,
+                    internal_clock=120)
+
+
 if __name__ == '__main__':
-    print('output ports: ', mido.get_output_names())
-    print('input ports: ', mido.get_input_names())
+    list_ports()
+    curses.wrapper(voice_test)
